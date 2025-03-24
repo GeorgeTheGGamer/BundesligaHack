@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Image Upload</title>
+    <title>AI Image Analyzer</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -155,11 +155,50 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        
+        .analysis-results {
+            margin-top: 2rem;
+            display: none;
+            text-align: left;
+            padding: 1.5rem;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+        }
+        
+        .analysis-results h3 {
+            margin-top: 0;
+            color: #2c3e50;
+            text-align: center;
+        }
+        
+        .result-item {
+            display: flex;
+            margin-bottom: 0.8rem;
+            align-items: center;
+        }
+        
+        .result-icon {
+            margin-right: 10px;
+            font-size: 1.2rem;
+        }
+        
+        .result-label {
+            font-weight: 600;
+            margin-right: 8px;
+        }
+        
+        .detected {
+            color: #2ecc71;
+        }
+        
+        .not-detected {
+            color: #e74c3c;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Image Upload</h1>
+        <h1>AI Image Analyzer</h1>
         
         <div class="upload-area" id="drop-area">
             <div class="upload-icon">📁</div>
@@ -177,7 +216,7 @@
             <h3>Preview</h3>
             <img src="/api/placeholder/400/300" id="preview-img" alt="Image preview">
             <div class="info" id="file-info"></div>
-            <button class="upload-btn" id="upload-btn" disabled>Upload to Server</button>
+            <button class="upload-btn" id="upload-btn" disabled>Analyze Image</button>
             
             <div class="progress-container" id="progress-container">
                 <div class="progress-bar">
@@ -187,6 +226,25 @@
             </div>
             
             <div class="status" id="status"></div>
+            
+            <div class="analysis-results" id="analysis-results">
+                <h3>Analysis Results</h3>
+                <div class="result-item">
+                    <span class="result-icon" id="person-icon">❓</span>
+                    <span class="result-label">Person:</span>
+                    <span id="person-result">Analyzing...</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-icon" id="type-icon">ℹ️</span>
+                    <span class="result-label">Type:</span>
+                    <span id="type-result">Analyzing...</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-icon" id="ball-icon">❓</span>
+                    <span class="result-label">Ball:</span>
+                    <span id="ball-result">Analyzing...</span>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -202,6 +260,13 @@
         const progressBar = document.getElementById('progress');
         const spinner = document.getElementById('spinner');
         const statusElement = document.getElementById('status');
+        const analysisResults = document.getElementById('analysis-results');
+        const personIcon = document.getElementById('person-icon');
+        const personResult = document.getElementById('person-result');
+        const typeIcon = document.getElementById('type-icon');
+        const typeResult = document.getElementById('type-result');
+        const ballIcon = document.getElementById('ball-icon');
+        const ballResult = document.getElementById('ball-result');
         
         let currentFile = null;
         
@@ -263,6 +328,7 @@
                 displayPreview(file);
                 uploadBtn.disabled = false;
                 resetStatus();
+                hideAnalysisResults();
             } else {
                 alert('Please select an image file (JPG, PNG, GIF, etc.)');
             }
@@ -315,6 +381,7 @@
             progressContainer.style.display = 'block';
             spinner.style.display = 'block';
             resetStatus();
+            hideAnalysisResults();
             
             // Create and configure AJAX request
             const xhr = new XMLHttpRequest();
@@ -335,16 +402,17 @@
                     if (xhr.status === 200) {
                         try {
                             const response = JSON.parse(xhr.responseText);
-                            showStatus('success', `Upload successful! Image saved as: ${response.filename}`);
+                            showStatus('success', `Analysis complete!`);
+                            displayAnalysisResults(response.analysis);
                         } catch (e) {
-                            showStatus('success', 'Upload successful!');
+                            showStatus('success', 'Analysis complete, but could not parse results.');
                         }
                     } else {
-                        let errorMessage = 'Upload failed.';
+                        let errorMessage = 'Analysis failed.';
                         try {
                             const response = JSON.parse(xhr.responseText);
                             if (response.error) {
-                                errorMessage = `Upload failed: ${response.error}`;
+                                errorMessage = `Analysis failed: ${response.error}`;
                             }
                         } catch (e) {
                             // Use default error message
@@ -369,6 +437,51 @@
             statusElement.textContent = '';
             statusElement.className = 'status';
             progressBar.style.width = '0';
+        }
+        
+        function hideAnalysisResults() {
+            analysisResults.style.display = 'none';
+            personIcon.textContent = '❓';
+            personResult.textContent = 'Analyzing...';
+            typeIcon.textContent = 'ℹ️';
+            typeResult.textContent = 'Analyzing...';
+            ballIcon.textContent = '❓';
+            ballResult.textContent = 'Analyzing...';
+        }
+        
+        function displayAnalysisResults(analysis) {
+            analysisResults.style.display = 'block';
+            
+            // Update person detection result
+            if (analysis.has_person) {
+                personIcon.textContent = '✅';
+                personIcon.className = 'result-icon detected';
+                personResult.textContent = 'Detected';
+                
+                typeIcon.textContent = '👤';
+                typeResult.textContent = analysis.person_type || 'Unknown';
+            } else {
+                personIcon.textContent = '❌';
+                personIcon.className = 'result-icon not-detected';
+                personResult.textContent = 'Not detected';
+                
+                typeIcon.textContent = '❓';
+                typeResult.textContent = 'N/A';
+            }
+            
+            // Update ball detection result
+            if (analysis.has_ball) {
+                ballIcon.textContent = '✅';
+                ballIcon.className = 'result-icon detected';
+                ballResult.textContent = `Detected (${Math.round(analysis.ball_confidence * 100)}% confidence)`;
+            } else {
+                ballIcon.textContent = '❌';
+                ballIcon.className = 'result-icon not-detected';
+                ballResult.textContent = 'Not detected';
+            }
+            
+            // Enable upload button for another analysis
+            uploadBtn.disabled = false;
         }
     </script>
 </body>
