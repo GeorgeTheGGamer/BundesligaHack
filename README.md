@@ -140,10 +140,4 @@ prediction = model.predict(keypoints)
 print(f"Predicted class: {prediction[0]}")
 ```
 
-## Future Work
-
-- Real-time pose recognition implementation
-- Integration with video streams
-- Expanded pose library
-- Ensemble models for improved accuracy
-- Transfer learning approaches
+George Blagden, Carl Kaziboni, John Nocum
