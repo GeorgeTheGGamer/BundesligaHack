@@ -1,0 +1,210 @@
+# MoveNet Pose Recognition - Technical Documentation
+
+## Architecture Overview
+
+This document provides technical details about the implementation of our pose recognition system.
+
+### System Components
+
+```
+┌─────────────────┐    ┌───────────────┐    ┌────────────────┐    ┌─────────────────┐
+│                 │    │               │    │                │    │                 │
+│  Input Image    │ -> │ MoveNet Model │ -> │ Keypoint Data  │ -> │ ML Classifier   │
+│                 │    │               │    │                │    │                 │
+└─────────────────┘    └───────────────┘    └────────────────┘    └─────────────────┘
+```
+
+### Data Flow
+
+1. **Image Input**: RGB images (resized to 256x256 for MoveNet Thunder)
+2. **Pose Estimation**: MoveNet extracts 17 keypoints
+3. **Feature Processing**: Keypoints are flattened to a 51-dimensional vector
+4. **Classification**: Trained model predicts the pose class
+
+## MoveNet Integration
+
+### Model Selection
+
+We use MoveNet Thunder for its superior accuracy compared to Lightning, accepting a small performance trade-off.
+
+### Keypoint Structure
+
+MoveNet outputs 17 keypoints at these positions:
+- 0: nose
+- 1: left_eye
+- 2: right_eye
+- 3: left_ear
+- 4: right_ear
+- 5: left_shoulder
+- 6: right_shoulder
+- 7: left_elbow
+- 8: right_elbow
+- 9: left_wrist
+- 10: right_wrist
+- 11: left_hip
+- 12: right_hip
+- 13: left_knee
+- 14: right_knee
+- 15: left_ankle
+- 16: right_ankle
+
+Each keypoint contains:
+- y-coordinate (normalized to 0-1)
+- x-coordinate (normalized to 0-1)
+- confidence score (0-1)
+
+## Model Implementation Details
+
+### Neural Network Architecture
+
+```python
+model = Sequential()
+model.add(Flatten(input_shape = (17,3)))
+model.add(Dense(units=64, activation='relu'))
+model.add(Dense(units=128, activation='relu'))
+model.add(Dropout(0.2)) 
+model.add(Dense(units=256, activation='relu'))
+model.add(Dropout(0.3))
+model.add(Dense(units=512, activation='relu'))
+model.add(Dropout(0.3)) 
+model.add(Dense(units=1024, activation='relu'))
+model.add(Dropout(0.4))
+model.add(Dense(units=2048, activation='relu'))
+model.add(Dropout(0.5))
+model.add(Dense(units=num_classes, activation='softmax'))
+```
+
+### Hyperparameter Tuning
+
+Keras Tuner was used to search optimal hyperparameters:
+- Number of hidden layers
+- Units per layer
+- Dropout rates
+- Learning rates
+
+### K-Nearest Neighbors Implementation
+
+KNN models were implemented with optimized k values:
+- Input shape: (n_samples, 51)
+- Distance metric: Euclidean
+- Optimal k values determined through cross-validation
+
+### MLP Classifier Configuration
+
+```python
+mlp = MLPClassifier(
+    hidden_layer_sizes=(100, 50),  # Two hidden layers
+    activation='relu',
+    solver='adam',
+    alpha=0.0001,  # L2 regularization
+    batch_size='auto',
+    learning_rate='adaptive',
+    max_iter=1000,
+    random_state=42
+)
+```
+
+## Cross-Validation Methodology
+
+### K-Fold Implementation
+
+```python
+kf = KFold(n_splits=5, shuffle=True, random_state=42)
+```
+
+Metrics tracked per fold:
+- Loss
+- Accuracy
+- Individual fold performances
+
+## Performance Analysis
+
+### Computational Requirements
+
+| Model Type | Training Time | Inference Time | Memory Usage |
+|------------|---------------|----------------|--------------|
+| Neural Network | High | Medium | High |
+| KNN | Low | Medium | Medium |
+| MLP | Medium | Low | Medium |
+
+### Accuracy-Speed Tradeoffs
+
+- Neural Networks: Highest potential accuracy but most resource-intensive
+- KNN: Fast training but slower inference as dataset grows
+- MLP: Best balance of accuracy and performance
+
+## Known Limitations and Future Improvements
+
+### Current Limitations
+
+1. Sensitivity to background and lighting conditions
+2. Limited to single-person detection
+3. Limited pose library (16 classes total)
+4. Requires full visibility of subject for best performance
+
+### Planned Improvements
+
+1. Ensemble methods to improve classification accuracy
+2. Data augmentation to improve model robustness
+3. Real-time optimization for mobile deployment
+4. Integration with temporal models (LSTM) for motion sequence recognition
+
+## Implementation Code Examples
+
+### Loading Models
+
+```python
+import joblib
+import tensorflow as tf
+import tensorflow_hub as hub
+
+# Load MoveNet
+module = hub.load("https://tfhub.dev/google/movenet/singlepose/thunder/4")
+
+# Load classifier
+model = joblib.load('smart_fullbody_mlp.joblib')
+```
+
+### Preprocessing Images
+
+```python
+def preprocess_image(image_path, input_size=256):
+    # Load image
+    image = tf.io.read_file(image_path)
+    image = tf.image.decode_jpeg(image)
+    
+    # Resize and pad to square
+    image = tf.expand_dims(image, axis=0)
+    image = tf.image.resize_with_pad(image, input_size, input_size)
+    
+    return image
+```
+
+### Extracting Keypoints
+
+```python
+def extract_keypoints(preprocessed_image, module):
+    # Run inference
+    model_fn = module.signatures['serving_default']
+    input_image = tf.cast(preprocessed_image, dtype=tf.int32)
+    outputs = model_fn(input_image)
+    
+    # Process keypoints
+    keypoints = outputs['output_0'].numpy()
+    keypoints = keypoints.squeeze()
+    
+    return keypoints
+```
+
+### Making Predictions
+
+```python
+def predict_pose(keypoints, model):
+    # Reshape keypoints for model input
+    keypoints_flat = keypoints.reshape(1, 51)
+    
+    # Make prediction
+    prediction = model.predict(keypoints_flat)
+    
+    return prediction[0]
+```
